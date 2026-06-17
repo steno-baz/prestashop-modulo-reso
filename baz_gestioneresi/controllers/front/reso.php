@@ -8,6 +8,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         $is_logged = $this->context->customer->isLogged();
         $customer_data = array();
         $orders = array();
+        $disabled_orders_count = 0;
 
         // Se l'utente è loggato, recuperiamo i dati e i suoi ordini
         if ($is_logged) {
@@ -56,6 +57,10 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                         }
                     }
 
+                    if (!$selectable) {
+                        $disabled_orders_count++;
+                    }
+
                     $orders[] = array(
                         'id_order' => $order['id_order'],
                         'reference' => $order['reference'],
@@ -77,6 +82,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             'is_logged' => $is_logged,
             'customer_data' => $customer_data,
             'orders' => $orders,
+            'disabled_orders_count' => $disabled_orders_count,
             'errors' => $this->errors,
             'success' => Tools::getValue('success'),
             'selected_order' => Tools::getValue('ordine'),

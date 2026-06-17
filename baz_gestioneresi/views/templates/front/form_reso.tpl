@@ -1,6 +1,12 @@
 {extends file='page.tpl'}
 
 {block name='page_content'}
+<style type="text/css">
+.reso-container ol li,.reso-container ul li { padding: 2px; margin-left: 30px;}
+select option:disabled {
+    color: #b5b5b5;
+}
+</style>
     <div class="reso-container page-cms">
         <h2>Istruzioni per il Reso</h2>
         <div class="reso-instructions" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa;">
@@ -25,26 +31,43 @@
             {/if}
 
             <form action="" method="post" enctype="multipart/form-data" class="form-reso-custom">
-                
-                <div class="form-group">
-                    <label for="nome">Nome *</label>
-                    <input type="text" name="nome" id="nome" class="form-control" value="{if $is_logged}{$customer_data.firstname}{/if}" required>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="nome">Nome *</label>
+                            <input type="text" name="nome" id="nome" class="form-control" value="{if $is_logged}{$customer_data.firstname}{/if}" required>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="cognome">Cognome *</label>
+                            <input type="text" name="cognome" id="cognome" class="form-control" value="{if $is_logged}{$customer_data.lastname}{/if}" required>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="cognome">Cognome *</label>
-                    <input type="text" name="cognome" id="cognome" class="form-control" value="{if $is_logged}{$customer_data.lastname}{/if}" required>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="email">Email *</label>
+                            <input type="email" name="email" id="email" class="form-control" value="{if $is_logged}{$customer_data.email}{/if}" required>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="cellulare">Cellulare</label>
+                            <input type="text" name="cellulare" id="cellulare" class="form-control">
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="email">Email *</label>
-                    <input type="email" name="email" id="email" class="form-control" value="{if $is_logged}{$customer_data.email}{/if}" required>
-                </div>
 
-                <div class="form-group">
-                    <label for="cellulare">Cellulare</label>
-                    <input type="text" name="cellulare" id="cellulare" class="form-control">
-                </div>
+
+
+
 
                 <div class="form-group">
                     <label for="ordine">Codice Ordine *</label>
@@ -53,11 +76,15 @@
                             <option value="">-- Seleziona il tuo ordine --</option>
                             {foreach from=$orders item=order}
                                 <option value="{$order.reference}" {if $selected_order == $order.reference}selected{/if} {if !$order.selectable}disabled{/if}>
-                                    Ordine {$order.reference} del {$order.date|date_format:"%d/%m/%Y"}{if !$order.selectable} - non selezionabile{/if}
+                                    {if !$order.selectable}[FUORI TEMPO] - {/if}Ordine {$order.reference} del {$order.date|date_format:"%d/%m/%Y"}
                                 </option>
                             {/foreach}
                         </select>
-                        <small class="form-text text-muted">Gli ordini bloccati sono oltre {$resi_days} giorni dalla data di consegna o dalla data in cui lo stato è diventato "pagamento accettato".</small>
+                        {if $disabled_orders_count > 0}
+                            <small class="form-text text-muted">Attenzione: {$disabled_orders_count} ordine{if $disabled_orders_count > 1}s{/if} non è stato selezionabile perché oltre {$resi_days} giorni dalla data di consegna o dalla data in cui lo stato è diventato "pagamento accettato".</small>
+                        {else}
+                            <small class="form-text text-muted">Gli ordini oltre {$resi_days} giorni dalla data di consegna o, se non consegnato, dalla data del pagamento non sono selezionabili.</small>
+                        {/if}
                     {else}
                         <input type="text" name="ordine" id="ordine" class="form-control" placeholder="Es. XXXXXX" value="{$selected_order|escape:'htmlall':'UTF-8'}" required>
                         {if $is_logged}<small class="form-text text-muted">Non abbiamo trovato ordini recenti nel tuo account, inseriscilo manualmente.</small>{/if}
@@ -65,7 +92,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="messaggio">Motivazione del reso / Messaggio *</label>
+                    <label for="messaggio">Motivazione del reso *</label>
                     <textarea name="messaggio" id="messaggio" rows="5" class="form-control" required placeholder="Descrivi il motivo del reso..."></textarea>
                 </div>
 
