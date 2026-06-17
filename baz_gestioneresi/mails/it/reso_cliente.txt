@@ -1,0 +1,19 @@
+Conferma Richiesta Reso
+
+Ciao {nome} {cognome},
+
+Abbiamo ricevuto correttamente la tua richiesta di reso per l'ordine #{ordine}.
+
+Dettagli della tua richiesta:
+- Ordine: #{ordine}
+- Cellulare: {cellulare}
+- Messaggio:
+{messaggio}
+
+Istruzioni per il reso:
+(Le istruzioni dettagliate sono visibili nella versione HTML di questa email o sul nostro sito)
+
+Il nostro team elaborerà la tua richiesta il prima possibile.
+
+Grazie,
+Il Servizio Clienti
