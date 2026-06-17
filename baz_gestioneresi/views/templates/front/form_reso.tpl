@@ -52,9 +52,12 @@
                         <select name="ordine" id="ordine" class="form-control" required>
                             <option value="">-- Seleziona il tuo ordine --</option>
                             {foreach from=$orders item=order}
-                                <option value="{$order.reference}" {if $selected_order == $order.reference}selected{/if}>Ordine {$order.reference} del {$order.date|date_format:"%d/%m/%Y"}</option>
+                                <option value="{$order.reference}" {if $selected_order == $order.reference}selected{/if} {if !$order.selectable}disabled{/if}>
+                                    Ordine {$order.reference} del {$order.date|date_format:"%d/%m/%Y"}{if !$order.selectable} - non selezionabile{/if}
+                                </option>
                             {/foreach}
                         </select>
+                        <small class="form-text text-muted">Gli ordini bloccati sono oltre {$resi_days} giorni dalla data di consegna o dalla data in cui lo stato è diventato "pagamento accettato".</small>
                     {else}
                         <input type="text" name="ordine" id="ordine" class="form-control" placeholder="Es. XXXXXX" value="{$selected_order|escape:'htmlall':'UTF-8'}" required>
                         {if $is_logged}<small class="form-text text-muted">Non abbiamo trovato ordini recenti nel tuo account, inseriscilo manualmente.</small>{/if}

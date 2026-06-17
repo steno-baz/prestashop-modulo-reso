@@ -20,12 +20,48 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
 
             // Recuperiamo gli ultimi ordini del cliente
             $customer_orders = Order::getCustomerOrders($customer->id);
+            $resi_days = Configuration::get('BAZ_RESI_DAYS') !== false ? (int)Configuration::get('BAZ_RESI_DAYS') : 14;
+            $delivered_state = (int)Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED');
+            $payment_state = (int)Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED');
+
             if ($customer_orders) {
+                $order_ids = array_map('intval', array_column($customer_orders, 'id_order'));
+                $history = array();
+
+                if (!empty($order_ids) && ($delivered_state || $payment_state)) {
+                    $state_ids = array_filter(array($delivered_state, $payment_state));
+                    if (!empty($state_ids)) {
+                        $history_data = Db::getInstance()->executeS(
+                            'SELECT id_order, id_order_state, date_add FROM '._DB_PREFIX_.'order_history'
+                            .' WHERE id_order IN ('.implode(',', $order_ids).')'
+                            .' AND id_order_state IN ('.implode(',', $state_ids).')'
+                            .' ORDER BY date_add ASC'
+                        );
+
+                        if ($history_data) {
+                            foreach ($history_data as $row) {
+                                $history[$row['id_order']][] = $row;
+                            }
+                        }
+                    }
+                }
+
                 foreach ($customer_orders as $order) {
+                    $reference_date = $this->getReferenceDateForOrder($order['id_order'], $order['date_add'], $history, $delivered_state, $payment_state);
+                    $selectable = true;
+                    if ($reference_date) {
+                        $reference_timestamp = strtotime($reference_date);
+                        if ($reference_timestamp !== false) {
+                            $selectable = (time() - $reference_timestamp) <= ($resi_days * 86400);
+                        }
+                    }
+
                     $orders[] = array(
                         'id_order' => $order['id_order'],
                         'reference' => $order['reference'],
-                        'date' => $order['date_add']
+                        'date' => $order['date_add'],
+                        'reference_date' => $reference_date,
+                        'selectable' => $selectable,
                     );
                 }
             }
@@ -73,6 +109,11 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             return;
         }
 
+        if ($this->context->customer->isLogged() && !$this->isOrderEligible($ordine, $this->context->customer->id)) {
+            $this->errors[] = $this->module->l('L\'ordine selezionato non è più eligibile per il reso/recesso oppure non appartiene al tuo account.');
+            return;
+        }
+
         // Gestione Allegato
         $attachment = null;
         if (isset($_FILES['allegato']) && !empty($_FILES['allegato']['name'])) {
@@ -101,7 +142,8 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             '{ordine}' => $ordine,
             '{cellulare}' => $cellulare,
             '{messaggio}' => nl2br($messaggio),
-            '{intro_text}' => Configuration::get('BAZ_RESI_INTRO_TEXT') !== false ? Configuration::get('BAZ_RESI_INTRO_TEXT') : ''
+            '{intro_text}' => Configuration::get('BAZ_RESI_INTRO_TEXT') !== false ? Configuration::get('BAZ_RESI_INTRO_TEXT') : '',
+            '{customer_email_text}' => Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') !== false ? Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') : ''
         );
 
         // Invio al gestore del negozio (o alle email configurate)
@@ -153,5 +195,86 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         } else {
             $this->errors[] = $this->module->l('Si è verificato un errore durante l\'invio della richiesta. Riprova più tardi.');
         }
+    }
+
+    protected function getReferenceDateForOrder($id_order, $fallback_date, array $history, $delivered_state, $payment_state)
+    {
+        $reference_date = null;
+        if (!empty($history[$id_order])) {
+            foreach ($history[$id_order] as $row) {
+                if ($delivered_state && $row['id_order_state'] == $delivered_state) {
+                    $reference_date = $row['date_add'];
+                }
+            }
+            if (!$reference_date) {
+                foreach ($history[$id_order] as $row) {
+                    if ($payment_state && $row['id_order_state'] == $payment_state) {
+                        $reference_date = $row['date_add'];
+                    }
+                }
+            }
+        }
+
+        return $reference_date ? $reference_date : $fallback_date;
+    }
+
+    protected function isOrderEligible($reference, $customer_id)
+    {
+        $order_id = Order::getIdByReference(pSQL($reference));
+        if (!$order_id) {
+            return false;
+        }
+
+        $order = new Order($order_id);
+        if (!$order->id || (int)$order->id_customer !== (int)$customer_id) {
+            return false;
+        }
+
+        $resi_days = Configuration::get('BAZ_RESI_DAYS') !== false ? (int)Configuration::get('BAZ_RESI_DAYS') : 14;
+        $delivered_state = (int)Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED');
+        $payment_state = (int)Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED');
+        $reference_date = $this->getOrderReferenceDate($order->id, $order->date_add, $delivered_state, $payment_state);
+
+        if (!$reference_date) {
+            return false;
+        }
+
+        $reference_timestamp = strtotime($reference_date);
+        if ($reference_timestamp === false) {
+            return false;
+        }
+
+        return (time() - $reference_timestamp) <= ($resi_days * 86400);
+    }
+
+    protected function getOrderReferenceDate($id_order, $fallback_date, $delivered_state, $payment_state)
+    {
+        $reference_date = null;
+        $state_ids = array_filter(array($delivered_state, $payment_state));
+        if ($state_ids) {
+            $history_data = Db::getInstance()->executeS(
+                'SELECT id_order_state, date_add FROM '._DB_PREFIX_.'order_history'
+                .' WHERE id_order = '.(int)$id_order
+                .' AND id_order_state IN ('.implode(',', $state_ids).')'
+                .' ORDER BY date_add ASC'
+            );
+
+            if ($history_data) {
+                foreach ($history_data as $row) {
+                    if ($delivered_state && $row['id_order_state'] == $delivered_state) {
+                        $reference_date = $row['date_add'];
+                    }
+                }
+                if (!$reference_date) {
+                    foreach ($history_data as $row) {
+                        if ($payment_state && $row['id_order_state'] == $payment_state) {
+                            $reference_date = $row['date_add'];
+                        }
+                    }
+                }
+            }
+        }
+
+        return $reference_date ? $reference_date : $fallback_date;
     }
 }

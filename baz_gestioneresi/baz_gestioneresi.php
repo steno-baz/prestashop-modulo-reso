@@ -32,6 +32,9 @@ class Baz_gestioneresi extends Module
             Configuration::updateValue('BAZ_RESI_DAYS', 14) &&
             Configuration::updateValue('BAZ_RESI_PRIVACY_LINK', '/Privacy_Policy_sito_web.pdf') &&
             Configuration::updateValue('BAZ_RESI_INTRO_TEXT', $defaultIntro, true) &&
+            Configuration::updateValue('BAZ_RESI_CUSTOMER_EMAIL_TEXT', '', true) &&
+            Configuration::updateValue('BAZ_RESI_ORDER_STATE_DELIVERED', 0) &&
+            Configuration::updateValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED', 0) &&
             Configuration::updateValue('BAZ_RESI_EMAILS', Configuration::get('PS_SHOP_EMAIL')) &&
             Configuration::updateValue('BAZ_RESI_SEND_CUSTOMER_MAIL', 1);
     }
@@ -42,6 +45,9 @@ class Baz_gestioneresi extends Module
             Configuration::deleteByName('BAZ_RESI_DAYS') &&
             Configuration::deleteByName('BAZ_RESI_PRIVACY_LINK') &&
             Configuration::deleteByName('BAZ_RESI_INTRO_TEXT') &&
+            Configuration::deleteByName('BAZ_RESI_CUSTOMER_EMAIL_TEXT') &&
+            Configuration::deleteByName('BAZ_RESI_ORDER_STATE_DELIVERED') &&
+            Configuration::deleteByName('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED') &&
             Configuration::deleteByName('BAZ_RESI_EMAILS') &&
             Configuration::deleteByName('BAZ_RESI_SEND_CUSTOMER_MAIL');
     }
@@ -54,15 +60,22 @@ class Baz_gestioneresi extends Module
             $days = (int)Tools::getValue('BAZ_RESI_DAYS');
             $privacy = (string)Tools::getValue('BAZ_RESI_PRIVACY_LINK');
             $intro = Tools::getValue('BAZ_RESI_INTRO_TEXT'); // Raw value for HTML
+            $customer_email_text = Tools::getValue('BAZ_RESI_CUSTOMER_EMAIL_TEXT'); // Raw value for HTML
             $emails = (string)Tools::getValue('BAZ_RESI_EMAILS');
             $send_customer_mail = (int)Tools::getValue('BAZ_RESI_SEND_CUSTOMER_MAIL');
 
-            if (!$days || $days <= 0 || empty($privacy) || empty($intro) || empty($emails)) {
-                $output .= $this->displayError($this->l('Compila tutti i campi obbligatori: Email interne, Giorni per il reso, Link alla Privacy Policy e Testo introduttivo.'));
+            $delivered_state = (int)Tools::getValue('BAZ_RESI_ORDER_STATE_DELIVERED');
+            $payment_state = (int)Tools::getValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED');
+
+            if (!$days || $days <= 0 || empty($privacy) || empty($intro) || empty($emails) || !$delivered_state || !$payment_state) {
+                $output .= $this->displayError($this->l('Compila tutti i campi obbligatori: Email interne, Giorni per il reso, Link alla Privacy Policy, Testo introduttivo e stati ordine.'));
             } else {
                 Configuration::updateValue('BAZ_RESI_DAYS', $days);
                 Configuration::updateValue('BAZ_RESI_PRIVACY_LINK', $privacy);
                 Configuration::updateValue('BAZ_RESI_INTRO_TEXT', $intro, true);
+                Configuration::updateValue('BAZ_RESI_CUSTOMER_EMAIL_TEXT', $customer_email_text, true);
+                Configuration::updateValue('BAZ_RESI_ORDER_STATE_DELIVERED', $delivered_state);
+                Configuration::updateValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED', $payment_state);
                 Configuration::updateValue('BAZ_RESI_EMAILS', $emails);
                 Configuration::updateValue('BAZ_RESI_SEND_CUSTOMER_MAIL', $send_customer_mail);
                 $output .= $this->displayConfirmation($this->l('Settings updated'));
@@ -169,6 +182,38 @@ class Baz_gestioneresi extends Module
                         'desc' => $this->l('Testo mostrato in cima al form di reso.'),
                         'required' => true,
                     ),
+                    array(
+                        'type' => 'textarea',
+                        'label' => $this->l('Testo personalizzato email cliente'),
+                        'name' => 'BAZ_RESI_CUSTOMER_EMAIL_TEXT',
+                        'autoload_rte' => true,
+                        'desc' => $this->l('Testo inviato solo all\'email di conferma cliente.'),
+                        'required' => false,
+                    ),
+                    array(
+                        'type' => 'select',
+                        'label' => $this->l('Stato ordine consegnato'),
+                        'name' => 'BAZ_RESI_ORDER_STATE_DELIVERED',
+                        'options' => array(
+                            'query' => $this->getOrderStateOptions(),
+                            'id' => 'id_order_state',
+                            'name' => 'name',
+                        ),
+                        'desc' => $this->l('Stato ordine che indica la consegna della merce.'),
+                        'required' => true,
+                    ),
+                    array(
+                        'type' => 'select',
+                        'label' => $this->l('Stato ordine pagamento accettato'),
+                        'name' => 'BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED',
+                        'options' => array(
+                            'query' => $this->getOrderStateOptions(),
+                            'id' => 'id_order_state',
+                            'name' => 'name',
+                        ),
+                        'desc' => $this->l('Stato ordine da usare se non esiste ancora il relativo stato consegnato.'),
+                        'required' => true,
+                    ),
                 ),
                 'submit' => array(
                     'title' => $this->l('Salva'),
@@ -183,8 +228,16 @@ class Baz_gestioneresi extends Module
             'BAZ_RESI_DAYS' => Configuration::get('BAZ_RESI_DAYS') !== false ? Configuration::get('BAZ_RESI_DAYS') : 14,
             'BAZ_RESI_PRIVACY_LINK' => Configuration::get('BAZ_RESI_PRIVACY_LINK') !== false ? Configuration::get('BAZ_RESI_PRIVACY_LINK') : '/Privacy_Policy_sito_web.pdf',
             'BAZ_RESI_INTRO_TEXT' => Configuration::get('BAZ_RESI_INTRO_TEXT') !== false ? Configuration::get('BAZ_RESI_INTRO_TEXT') : '',
+            'BAZ_RESI_CUSTOMER_EMAIL_TEXT' => Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') !== false ? Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') : '',
+            'BAZ_RESI_ORDER_STATE_DELIVERED' => Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED') !== false ? Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED') : 0,
+            'BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED' => Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED') !== false ? Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED') : 0,
             'BAZ_RESI_EMAILS' => Configuration::get('BAZ_RESI_EMAILS') !== false ? Configuration::get('BAZ_RESI_EMAILS') : Configuration::get('PS_SHOP_EMAIL'),
             'BAZ_RESI_SEND_CUSTOMER_MAIL' => Configuration::get('BAZ_RESI_SEND_CUSTOMER_MAIL') !== false ? Configuration::get('BAZ_RESI_SEND_CUSTOMER_MAIL') : 1,
         );
+    }
+
+    protected function getOrderStateOptions()
+    {
+        return OrderState::getOrderStates((int)$this->context->language->id);
     }
 }
