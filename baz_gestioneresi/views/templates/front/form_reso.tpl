@@ -85,6 +85,35 @@ select option:disabled {
                         {else}
                             <small class="form-text text-muted">Gli ordini oltre {$resi_days} giorni dalla data di consegna o, se non consegnato, dalla data del pagamento non sono selezionabili.</small>
                         {/if}
+
+                        <div id="products-selection-container" style="margin-top: 15px; display: none;">
+                            <label><strong>Seleziona i prodotti da rendere: *</strong></label>
+                            {foreach from=$orders item=order}
+                                {if $order.selectable && !empty($order.products)}
+                                    <div id="products-order-{$order.reference}" class="order-products-list" style="display: none; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #fff; margin-bottom: 15px;">
+                                        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 0.9rem; color: #666;">Seleziona i prodotti dell'ordine {$order.reference}</span>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm select-all-products-btn" data-order-ref="{$order.reference}">Seleziona tutto</button>
+                                        </div>
+                                        {foreach from=$order.products item=product}
+                                            <div class="product-item" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                                                <div style="display: flex; align-items: center; flex-grow: 1; margin-right: 15px;">
+                                                    <input type="checkbox" name="products_to_return[]" value="{$product.id_order_detail}" class="product-select-chk" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                                    <span>
+                                                        <strong>{$product.product_name}</strong>
+                                                        {if $product.product_reference}<br><small class="text-muted">Rif: {$product.product_reference}</small>{/if}
+                                                    </span>
+                                                </div>
+                                                <div style="display: flex; align-items: center; width: 120px; justify-content: flex-end;">
+                                                    <span style="margin-right: 8px; font-size: 0.85rem; color: #666;">Qta:</span>
+                                                    <input type="number" name="product_qty_{$product.id_order_detail}" value="{$product.product_quantity}" min="1" max="{$product.product_quantity}" class="form-control product-qty-input" style="width: 70px; padding: 5px; height: auto;" disabled>
+                                                </div>
+                                            </div>
+                                        {/foreach}
+                                    </div>
+                                {/if}
+                            {/foreach}
+                        </div>
                     {else}
                         <input type="text" name="ordine" id="ordine" class="form-control" placeholder="Es. XXXXXX" value="{$selected_order|escape:'htmlall':'UTF-8'}" required>
                         {if $is_logged}<small class="form-text text-muted">Non abbiamo trovato ordini recenti nel tuo account, inseriscilo manualmente.</small>{/if}
@@ -112,4 +141,59 @@ select option:disabled {
             </form>
         {/if}
     </div>
+
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    var $ = window.jQuery;
+    if (!$) return;
+
+    function handleOrderChange() {
+        var selectedRef = $('#ordine').val();
+        
+        // Nascondi il contenitore principale
+        $('#products-selection-container').hide();
+        // Nascondi tutte le liste, deseleziona i prodotti e disabilita gli input quantità
+        $('.order-products-list').hide().find('.product-select-chk').prop('checked', false);
+        $('.order-products-list').find('.product-qty-input').prop('disabled', true);
+
+        if (selectedRef) {
+            var $activeList = $('#products-order-' + selectedRef);
+            if ($activeList.length) {
+                $('#products-selection-container').show();
+                $activeList.show();
+            }
+        }
+    }
+
+    // Inizializzazione al caricamento e al cambio ordine
+    $('#ordine').on('change', handleOrderChange);
+    if ($('#ordine').val()) {
+        handleOrderChange();
+    }
+
+    // Abilita/Disabilita l'input quantità al click sulla checkbox del prodotto
+    $(document).on('change', '.product-select-chk', function() {
+        var $qtyInput = $(this).closest('.product-item').find('.product-qty-input');
+        if ($(this).is(':checked')) {
+            $qtyInput.prop('disabled', false);
+        } else {
+            $qtyInput.prop('disabled', true);
+        }
+    });
+
+    // Gestione del pulsante Seleziona Tutto
+    $(document).on('click', '.select-all-products-btn', function() {
+        var ref = $(this).data('order-ref');
+        var $list = $('#products-order-' + ref);
+        
+        $list.find('.product-select-chk').each(function() {
+            $(this).prop('checked', true);
+            var $qtyInput = $(this).closest('.product-item').find('.product-qty-input');
+            $qtyInput.prop('disabled', false);
+            // Imposta al valore massimo consentito (quantità ordinata)
+            $qtyInput.val($qtyInput.attr('max'));
+        });
+    });
+});
+</script>
 {/block}

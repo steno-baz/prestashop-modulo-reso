@@ -1,14 +1,14 @@
-Nuova Richiesta di Reso
+Nuova Richiesta di Reso/Recesso
 
-È stata inviata una nuova richiesta di reso dal modulo.
+È stata inviata una nuova richiesta di reso/recesso dal modulo.
 
 Dati Cliente:
+- Data e ora: {data_ora}
 - Nome: {nome} {cognome}
 - Email: {email}
 - Cellulare: {cellulare}
 - Ordine: #{ordine}
-
-Messaggio:
+-Messaggio:
 {messaggio}
 
 Accedi al backoffice per gestire questa richiesta.

@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
-    <title>Nuova Richiesta di Reso</title>
+    <title>Nuova Richiesta di Reso/Recesso</title>
 </head>
+
 <body style="font-family: Arial, sans-serif; color: #333;">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #d9534f;">Nuova Richiesta di Reso</h2>
-        <p>È stata inviata una nuova richiesta di reso dal modulo.</p>
-        
+        <h2 style="color: #d9534f;">Nuova Richiesta di Reso/Recesso</h2>
+        <p>È stata inviata una nuova richiesta di reso/recesso dal modulo.</p>
+
         <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <h3 style="margin-top: 0;">Dati Cliente:</h3>
             <ul>
+                <li><strong>Data e ora:</strong> {data_ora}</li>
                 <li><strong>Nome:</strong> {nome} {cognome}</li>
                 <li><strong>Email:</strong> {email}</li>
                 <li><strong>Cellulare:</strong> {cellulare}</li>
@@ -19,9 +22,11 @@
             </ul>
             <h3 style="margin-top: 20px;">Messaggio:</h3>
             <p>{messaggio}</p>
+            {prodotti_reso_html}
         </div>
-        
+
         <p>Accedi al backoffice per gestire questa richiesta.</p>
     </div>
 </body>
+
 </html>

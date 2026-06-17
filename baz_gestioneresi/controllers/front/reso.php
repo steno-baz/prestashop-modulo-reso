@@ -61,12 +61,16 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                         $disabled_orders_count++;
                     }
 
+                    $order_obj = new Order((int)$order['id_order']);
+                    $products = $order_obj->getProducts();
+
                     $orders[] = array(
                         'id_order' => $order['id_order'],
                         'reference' => $order['reference'],
                         'date' => $order['date_add'],
                         'reference_date' => $reference_date,
                         'selectable' => $selectable,
+                        'products' => $products,
                     );
                 }
             }
@@ -120,6 +124,49 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             return;
         }
 
+        // Se l'utente è loggato, recuperiamo e validiamo i prodotti selezionati da rendere
+        $selected_products = Tools::getValue('products_to_return');
+        $products_detail = array();
+
+        if ($this->context->customer->isLogged()) {
+            if (empty($selected_products) || !is_array($selected_products)) {
+                $this->errors[] = $this->module->l('Devi selezionare almeno un prodotto da rendere.');
+                return;
+            }
+
+            $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM '._DB_PREFIX_.'orders WHERE reference = \''.pSQL($ordine).'\'');
+            $order_obj = new Order($order_id);
+            $order_products = $order_obj->getProducts();
+
+            $ordered_qtys = array();
+            $product_names = array();
+            foreach ($order_products as $op) {
+                $ordered_qtys[(int)$op['id_order_detail']] = (int)$op['product_quantity'];
+                $product_names[(int)$op['id_order_detail']] = $op['product_name'] . ($op['product_reference'] ? ' (Rif: ' . $op['product_reference'] . ')' : '');
+            }
+
+            foreach ($selected_products as $id_order_detail) {
+                $id_order_detail = (int)$id_order_detail;
+                $qty = (int)Tools::getValue('product_qty_' . $id_order_detail);
+
+                if (!isset($ordered_qtys[$id_order_detail])) {
+                    $this->errors[] = $this->module->l('Uno dei prodotti selezionati non appartiene all\'ordine indicato.');
+                    return;
+                }
+
+                if ($qty <= 0 || $qty > $ordered_qtys[$id_order_detail]) {
+                    $this->errors[] = sprintf($this->module->l('Quantità non valida per il prodotto %s. Massimo consentito: %d.'), $product_names[$id_order_detail], $ordered_qtys[$id_order_detail]);
+                    return;
+                }
+
+                $products_detail[] = array(
+                    'id_order_detail' => $id_order_detail,
+                    'qty' => $qty,
+                    'name' => $product_names[$id_order_detail]
+                );
+            }
+        }
+
         // Gestione Allegato
         $attachment = null;
         if (isset($_FILES['allegato']) && !empty($_FILES['allegato']['name'])) {
@@ -140,14 +187,68 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             );
         }
 
+        // Scrittura nel database (solo se utente loggato)
+        $id_order_return = 0;
+        if ($this->context->customer->isLogged()) {
+            $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM '._DB_PREFIX_.'orders WHERE reference = \''.pSQL($ordine).'\'');
+            $db = Db::getInstance();
+            $db->insert('order_return', array(
+                'id_customer' => (int)$this->context->customer->id,
+                'id_order' => (int)$order_id,
+                'state' => 1, // In attesa di conferma
+                'question' => pSQL($messaggio),
+                'date_add' => date('Y-m-d H:i:s'),
+                'date_upd' => date('Y-m-d H:i:s')
+            ));
+
+            $id_order_return = (int)$db->Insert_ID();
+
+            if ($id_order_return) {
+                foreach ($products_detail as $p) {
+                    $db->insert('order_return_detail', array(
+                        'id_order_return' => (int)$id_order_return,
+                        'id_order_detail' => (int)$p['id_order_detail'],
+                        'id_customization' => 0,
+                        'product_quantity' => (int)$p['qty']
+                    ));
+                }
+            }
+        }
+
+        // Generazione del riepilogo prodotti per email
+        $prodotti_reso_html = '';
+        $prodotti_reso_txt = '';
+
+        if ($this->context->customer->isLogged() && !empty($products_detail)) {
+            $prodotti_reso_html = '<h3 style="margin-top: 20px;">Prodotti da rendere:</h3>';
+            $prodotti_reso_html .= '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
+            $prodotti_reso_html .= '<thead><tr style="background-color: #f2f2f2; text-align: left;"><th style="padding: 8px; border: 1px solid #ddd;">Prodotto</th><th style="padding: 8px; border: 1px solid #ddd; width: 80px; text-align: center;">Quantità</th></tr></thead>';
+            $prodotti_reso_html .= '<tbody>';
+
+            $prodotti_reso_txt = "\nProdotti da rendere:\n";
+
+            foreach ($products_detail as $p) {
+                $prodotti_reso_html .= '<tr>';
+                $prodotti_reso_html .= '<td style="padding: 8px; border: 1px solid #ddd;">' . htmlspecialchars($p['name']) . '</td>';
+                $prodotti_reso_html .= '<td style="padding: 8px; border: 1px solid #ddd; text-align: center;">' . (int)$p['qty'] . '</td>';
+                $prodotti_reso_html .= '</tr>';
+
+                $prodotti_reso_txt .= '- ' . $p['name'] . ' (Qta: ' . (int)$p['qty'] . ")\n";
+            }
+            $prodotti_reso_html .= '</tbody></table>';
+        }
+
         // Invio Email (Usa in automatico la config SMTP di PrestaShop)
         $template_vars = array(
+            '{data_ora}' => date('d/m/Y H:i:s'),
             '{nome}' => $nome,
             '{cognome}' => $cognome,
             '{email}' => $email,
             '{ordine}' => $ordine,
             '{cellulare}' => $cellulare,
             '{messaggio}' => nl2br($messaggio),
+            '{prodotti_reso_html}' => $prodotti_reso_html,
+            '{prodotti_reso_txt}' => $prodotti_reso_txt,
             '{intro_text}' => Configuration::get('BAZ_RESI_INTRO_TEXT') !== false ? Configuration::get('BAZ_RESI_INTRO_TEXT') : '',
             '{customer_email_text}' => Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') !== false ? Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') : ''
         );
@@ -226,7 +327,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
 
     protected function isOrderEligible($reference, $customer_id)
     {
-        $order_id = Order::getIdByReference(pSQL($reference));
+        $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM '._DB_PREFIX_.'orders WHERE reference = \''.pSQL($reference).'\'');
         if (!$order_id) {
             return false;
         }

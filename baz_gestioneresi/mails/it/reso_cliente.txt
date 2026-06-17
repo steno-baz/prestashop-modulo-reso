@@ -1,18 +1,14 @@
-Conferma Richiesta Reso
+Conferma Richiesta di reso/recesso
 
 Ciao {nome} {cognome},
 
-Abbiamo ricevuto correttamente la tua richiesta di reso per l'ordine #{ordine}.
+Abbiamo ricevuto correttamente la tua richiesta di reso/recesso per l'ordine #{ordine}.
 
 Dettagli della tua richiesta:
+- Data e ora: {data_ora}
 - Ordine: #{ordine}
 - Cellulare: {cellulare}
 - Messaggio:
 {messaggio}
 
 {customer_email_text}
-
-Il nostro team elaborerà la tua richiesta il prima possibile.
-
-Grazie,
-Il Servizio Clienti
