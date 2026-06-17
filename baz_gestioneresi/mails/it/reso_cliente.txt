@@ -10,5 +10,6 @@ Dettagli della tua richiesta:
 - Cellulare: {cellulare}
 - Messaggio:
 {messaggio}
+{prodotti_reso_txt}
 
 {customer_email_text}

@@ -8,7 +8,8 @@ Dati Cliente:
 - Email: {email}
 - Cellulare: {cellulare}
 - Ordine: #{ordine}
--Messaggio:
+- Messaggio:
 {messaggio}
+{prodotti_reso_txt}
 
 Accedi al backoffice per gestire questa richiesta.
