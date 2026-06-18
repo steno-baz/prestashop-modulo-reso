@@ -6,10 +6,7 @@ Dati Cliente:
 - Data e ora: {data_ora}
 - Nome: {nome} {cognome}
 - Email: {email}
-- Cellulare: {cellulare}
-- Ordine: #{ordine}
-- Messaggio:
-{messaggio}
+{cellulare_riga_txt}- Ordine: #{ordine}
+{messaggio_sezione_txt}
 {prodotti_reso_txt}
-
 Accedi al backoffice per gestire questa richiesta.

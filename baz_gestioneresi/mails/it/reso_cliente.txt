@@ -7,9 +7,6 @@ Abbiamo ricevuto correttamente la tua richiesta di reso/recesso per l'ordine #{o
 Dettagli della tua richiesta:
 - Data e ora: {data_ora}
 - Ordine: #{ordine}
-- Cellulare: {cellulare}
-- Messaggio:
-{messaggio}
+{cellulare_riga_txt}{messaggio_sezione_txt}
 {prodotti_reso_txt}
-
 {customer_email_text}

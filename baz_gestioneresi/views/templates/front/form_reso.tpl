@@ -8,11 +8,13 @@ select option:disabled {
 }
 </style>
     <div class="reso-container page-cms">
-        <h2>Istruzioni per il Reso</h2>
+        <h2>Istruzioni per il Reso/Recesso</h2>
         <div class="reso-instructions" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa;">
             {$resi_intro_text nofilter}
             <hr>
+            {if $show_nota_bene}
             <p class="mb-0"><strong>Nota Bene:</strong> Ti ricordiamo che il reso/recesso è possibile entro <strong>{$resi_days} giorni</strong> dalla consegna della merce (o dall'acquisto).</p>
+            {/if}
         </div>
 
         {if $success}
@@ -81,7 +83,7 @@ select option:disabled {
                             {/foreach}
                         </select>
                         {if $disabled_orders_count > 0}
-                            <small class="form-text text-muted">Attenzione: {$disabled_orders_count} ordine{if $disabled_orders_count > 1}s{/if} non è stato selezionabile perché oltre {$resi_days} giorni dalla data di consegna o dalla data in cui lo stato è diventato "pagamento accettato".</small>
+                            <small class="form-text text-muted">Attenzione: alcuni ordini potrebbero non essere selezionabili perché oltre {$resi_days} giorni dalla data di consegna o dell'ordine.</small>
                         {else}
                             <small class="form-text text-muted">Gli ordini oltre {$resi_days} giorni dalla data di consegna o, se non consegnato, dalla data del pagamento non sono selezionabili.</small>
                         {/if}
@@ -120,15 +122,19 @@ select option:disabled {
                     {/if}
                 </div>
 
+                {if $show_motivazione}
                 <div class="form-group">
-                    <label for="messaggio">Motivazione del reso *</label>
-                    <textarea name="messaggio" id="messaggio" rows="5" class="form-control" required placeholder="Descrivi il motivo del reso..."></textarea>
+                    <label for="messaggio">Motivazione del reso</label>
+                    <textarea name="messaggio" id="messaggio" rows="5" class="form-control" placeholder="Descrivi il motivo del reso..."></textarea>
                 </div>
+                {/if}
 
+                {if $show_allegato}
                 <div class="form-group">
                     <label for="allegato">Allegato (Foto/Documento - max 4MB)</label>
                     <input type="file" name="allegato" id="allegato" class="form-control-file">
                 </div>
+                {/if}
 
                 <div class="checkbox">
                     <label>
