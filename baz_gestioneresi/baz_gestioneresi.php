@@ -35,6 +35,7 @@ class Baz_gestioneresi extends Module
             Configuration::updateValue('BAZ_RESI_CUSTOMER_EMAIL_TEXT', '', true) &&
             Configuration::updateValue('BAZ_RESI_ORDER_STATE_DELIVERED', '') &&
             Configuration::updateValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED', '') &&
+            Configuration::updateValue('BAZ_RESI_ORDER_STATE_SHIPPED', '') &&
             Configuration::updateValue('BAZ_RESI_EMAILS', Configuration::get('PS_SHOP_EMAIL')) &&
             Configuration::updateValue('BAZ_RESI_SEND_CUSTOMER_MAIL', 1) &&
             Configuration::updateValue('BAZ_RESI_SHOW_ALLEGATO', 1) &&
@@ -51,6 +52,7 @@ class Baz_gestioneresi extends Module
             Configuration::deleteByName('BAZ_RESI_CUSTOMER_EMAIL_TEXT') &&
             Configuration::deleteByName('BAZ_RESI_ORDER_STATE_DELIVERED') &&
             Configuration::deleteByName('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED') &&
+            Configuration::deleteByName('BAZ_RESI_ORDER_STATE_SHIPPED') &&
             Configuration::deleteByName('BAZ_RESI_EMAILS') &&
             Configuration::deleteByName('BAZ_RESI_SEND_CUSTOMER_MAIL') &&
             Configuration::deleteByName('BAZ_RESI_SHOW_ALLEGATO') &&
@@ -76,11 +78,15 @@ class Baz_gestioneresi extends Module
             // Stati ordine: possono essere array (select multiple) o stringa singola
             $delivered_raw  = Tools::getValue('BAZ_RESI_ORDER_STATE_DELIVERED');
             $payment_raw    = Tools::getValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED');
+            $shipped_raw    = Tools::getValue('BAZ_RESI_ORDER_STATE_SHIPPED');
+            
             $delivered_states = array_filter(array_map('intval', is_array($delivered_raw) ? $delivered_raw : array($delivered_raw)));
             $payment_states   = array_filter(array_map('intval', is_array($payment_raw)  ? $payment_raw  : array($payment_raw)));
+            $shipped_states   = array_filter(array_map('intval', is_array($shipped_raw)  ? $shipped_raw  : array($shipped_raw)));
 
             $delivered_value = implode(',', $delivered_states);
             $payment_value   = implode(',', $payment_states);
+            $shipped_value   = implode(',', $shipped_states);
 
             if (!$days || $days <= 0 || empty($privacy) || empty($intro) || empty($emails)) {
                 $output .= $this->displayError($this->l('Compila tutti i campi obbligatori: Email interne, Giorni per il reso, Link alla Privacy Policy e Testo introduttivo.'));
@@ -91,6 +97,7 @@ class Baz_gestioneresi extends Module
                 Configuration::updateValue('BAZ_RESI_CUSTOMER_EMAIL_TEXT', $customer_email_text, true);
                 Configuration::updateValue('BAZ_RESI_ORDER_STATE_DELIVERED', $delivered_value);
                 Configuration::updateValue('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED', $payment_value);
+                Configuration::updateValue('BAZ_RESI_ORDER_STATE_SHIPPED', $shipped_value);
                 Configuration::updateValue('BAZ_RESI_EMAILS', $emails);
                 Configuration::updateValue('BAZ_RESI_SEND_CUSTOMER_MAIL', $send_customer_mail);
                 Configuration::updateValue('BAZ_RESI_SHOW_ALLEGATO', $show_allegato);
@@ -107,9 +114,85 @@ class Baz_gestioneresi extends Module
     {
         // Aggiunge il JS solo nella pagina dello storico ordini
         if ($this->context->controller->php_self == 'history') {
+            $eligible_orders = array();
+
+            if ($this->context->customer->isLogged()) {
+                $customer_orders = Order::getCustomerOrders($this->context->customer->id);
+                if ($customer_orders) {
+                    $resi_days = Configuration::get('BAZ_RESI_DAYS') !== false ? (int)Configuration::get('BAZ_RESI_DAYS') : 14;
+                    
+                    $parseStateIds = function($value) {
+                        if ($value === false || $value === null || $value === '') {
+                            return array();
+                        }
+                        return array_values(array_filter(array_map('intval', explode(',', (string)$value))));
+                    };
+                    
+                    $delivered_states = $parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED'));
+                    $payment_states   = $parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED'));
+                    
+                    $order_ids = array_map('intval', array_column($customer_orders, 'id_order'));
+                    $history   = array();
+                    
+                    $all_state_ids = array_filter(array_merge($delivered_states, $payment_states));
+                    if (!empty($order_ids) && !empty($all_state_ids)) {
+                        $history_data = Db::getInstance()->executeS(
+                            'SELECT id_order, id_order_state, date_add FROM ' . _DB_PREFIX_ . 'order_history'
+                            . ' WHERE id_order IN (' . implode(',', $order_ids) . ')'
+                            . ' AND id_order_state IN (' . implode(',', $all_state_ids) . ')'
+                            . ' ORDER BY date_add ASC'
+                        );
+                        if ($history_data) {
+                            foreach ($history_data as $row) {
+                                $history[$row['id_order']][] = $row;
+                            }
+                        }
+                    }
+                    
+                    foreach ($customer_orders as $order) {
+                        if (isset($order['current_state']) && (int)$order['current_state'] === (int)Configuration::get('PS_OS_CANCELED')) {
+                            continue;
+                        }
+                        
+                        $reference_date = null;
+                        $id_order = $order['id_order'];
+                        if (!empty($history[$id_order])) {
+                            // Prima gli stati consegnato
+                            foreach ($history[$id_order] as $row) {
+                                if (!empty($delivered_states) && in_array((int)$row['id_order_state'], $delivered_states)) {
+                                    $reference_date = $row['date_add'];
+                                }
+                            }
+                            // Poi stati pagamento (solo se consegnato non trovato)
+                            if (!$reference_date) {
+                                foreach ($history[$id_order] as $row) {
+                                    if (!empty($payment_states) && in_array((int)$row['id_order_state'], $payment_states)) {
+                                        $reference_date = $row['date_add'];
+                                    }
+                                }
+                            }
+                        }
+                        $reference_date = $reference_date ? $reference_date : $order['date_add'];
+                        
+                        $selectable = true;
+                        if ($reference_date) {
+                            $reference_timestamp = strtotime($reference_date);
+                            if ($reference_timestamp !== false) {
+                                $selectable = (time() - $reference_timestamp) <= ($resi_days * 86400);
+                            }
+                        }
+                        
+                        if ($selectable) {
+                            $eligible_orders[] = $order['reference'];
+                        }
+                    }
+                }
+            }
+
             $this->context->smarty->assign(array(
-                'baz_reso_link'  => $this->context->link->getModuleLink($this->name, 'reso'),
-                'baz_reso_label' => $this->l('Reso / Recesso')
+                'baz_reso_link'       => $this->context->link->getModuleLink($this->name, 'reso'),
+                'baz_reso_label'      => $this->l('Reso / Recesso'),
+                'baz_eligible_orders' => json_encode($eligible_orders)
             ));
             return $this->display(__FILE__, 'views/templates/hook/header_history.tpl');
         }
@@ -241,6 +324,17 @@ class Baz_gestioneresi extends Module
                     // --- Selezione multipla stati ordine ---
                     array(
                         'type'         => 'html',
+                        'label'        => $this->l('Stati ordine "Spedito"'),
+                        'name'         => 'BAZ_RESI_ORDER_STATE_SHIPPED_HTML',
+                        'html_content' => $this->renderMultiSelect(
+                            'BAZ_RESI_ORDER_STATE_SHIPPED',
+                            $order_states,
+                            (string)Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED')
+                        ),
+                        'desc' => $this->l('Seleziona gli stati che indicano che l\'ordine è stato spedito. Se non configuri nulla, la condizione "Annullamento intero ordine" non si applica.'),
+                    ),
+                    array(
+                        'type'         => 'html',
                         'label'        => $this->l('Stati ordine "Consegnato"'),
                         'name'         => 'BAZ_RESI_ORDER_STATE_DELIVERED_HTML',
                         'html_content' => $this->renderMultiSelect(
@@ -304,6 +398,7 @@ class Baz_gestioneresi extends Module
             'BAZ_RESI_PRIVACY_LINK'           => Configuration::get('BAZ_RESI_PRIVACY_LINK') !== false ? Configuration::get('BAZ_RESI_PRIVACY_LINK') : '/Privacy_Policy_sito_web.pdf',
             'BAZ_RESI_INTRO_TEXT'             => Configuration::get('BAZ_RESI_INTRO_TEXT') !== false ? Configuration::get('BAZ_RESI_INTRO_TEXT') : '',
             'BAZ_RESI_CUSTOMER_EMAIL_TEXT'    => Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') !== false ? Configuration::get('BAZ_RESI_CUSTOMER_EMAIL_TEXT') : '',
+            'BAZ_RESI_ORDER_STATE_SHIPPED'    => Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED') !== false ? Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED') : '',
             'BAZ_RESI_EMAILS'                 => Configuration::get('BAZ_RESI_EMAILS') !== false ? Configuration::get('BAZ_RESI_EMAILS') : Configuration::get('PS_SHOP_EMAIL'),
             'BAZ_RESI_SEND_CUSTOMER_MAIL'     => Configuration::get('BAZ_RESI_SEND_CUSTOMER_MAIL') !== false ? Configuration::get('BAZ_RESI_SEND_CUSTOMER_MAIL') : 1,
             'BAZ_RESI_SHOW_ALLEGATO'          => Configuration::get('BAZ_RESI_SHOW_ALLEGATO') !== false ? Configuration::get('BAZ_RESI_SHOW_ALLEGATO') : 1,

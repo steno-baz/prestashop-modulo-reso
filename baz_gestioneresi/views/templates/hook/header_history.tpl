@@ -14,7 +14,14 @@ document.addEventListener('DOMContentLoaded', function() {
             orderRef = orderRefElement.innerText.trim();
         }
         
-        // Creiamo il nuovo link per il reso
+        // Leggiamo gli ordini validi inviati da PHP
+        var eligibleOrders = {$baz_eligible_orders|default:'[]' nofilter};
+        
+        // Creiamo il nuovo link per il reso (solo se eleggibile o se per qualche motivo non abbiamo il codice ma vogliamo il pulsante, anche se in 1.7 c'è sempre)
+        if (orderRef && eligibleOrders.indexOf(orderRef) === -1) {
+            return; // L'ordine non è eleggibile per il reso, non mostriamo il bottone
+        }
+
         var resoLink = document.createElement('a');
         // Passiamo l'id dell'ordine nell'url così potremmo autoselezionarlo in futuro
         resoLink.href = '{$baz_reso_link}' + (orderRef ? '?ordine=' + encodeURIComponent(orderRef) : '');

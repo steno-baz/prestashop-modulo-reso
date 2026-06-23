@@ -14,6 +14,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         $resi_days        = Configuration::get('BAZ_RESI_DAYS') !== false ? (int)Configuration::get('BAZ_RESI_DAYS') : 14;
         $delivered_states = $this->parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_DELIVERED'));
         $payment_states   = $this->parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_PAYMENT_ACCEPTED'));
+        $shipped_states   = $this->parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED'));
 
         // Se l'utente è loggato, recuperiamo i dati e i suoi ordini
         if ($is_logged) {
@@ -32,7 +33,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                 $history   = array();
 
                 // Tutti gli stati rilevanti per il filtro
-                $all_state_ids = array_filter(array_merge($delivered_states, $payment_states));
+                $all_state_ids = array_filter(array_merge($delivered_states, $payment_states, $shipped_states));
 
                 if (!empty($order_ids) && !empty($all_state_ids)) {
                     $history_data = Db::getInstance()->executeS(
@@ -50,6 +51,11 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                 }
 
                 foreach ($customer_orders as $order) {
+                    // Escludi gli ordini annullati
+                    if (isset($order['current_state']) && (int)$order['current_state'] === (int)Configuration::get('PS_OS_CANCELED')) {
+                        continue;
+                    }
+
                     $reference_date = $this->getReferenceDateForOrder(
                         $order['id_order'],
                         $order['date_add'],
@@ -69,6 +75,19 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                         $disabled_orders_count++;
                     }
 
+                    $is_shipped = true;
+                    if (!empty($shipped_states)) {
+                        $is_shipped = false;
+                        if (!empty($history[$order['id_order']])) {
+                            foreach ($history[$order['id_order']] as $row) {
+                                if (in_array((int)$row['id_order_state'], $shipped_states)) {
+                                    $is_shipped = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     $order_obj = new Order((int)$order['id_order']);
                     $products  = $order_obj->getProducts();
 
@@ -78,6 +97,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
                         'date'           => $order['date_add'],
                         'reference_date' => $reference_date,
                         'selectable'     => $selectable,
+                        'is_shipped'     => $is_shipped,
                         'products'       => $products,
                     );
                 }
@@ -139,43 +159,70 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         // Se l'utente è loggato, recuperiamo e validiamo i prodotti selezionati da rendere
         $selected_products = Tools::getValue('products_to_return');
         $products_detail   = array();
+        
+        $is_shipped = true;
+        if ($this->context->customer->isLogged()) {
+            $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($ordine) . '\'');
+            $shipped_states = $this->parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED'));
+            if (!empty($shipped_states) && $order_id) {
+                $history_data = Db::getInstance()->executeS(
+                    'SELECT id_order_state FROM ' . _DB_PREFIX_ . 'order_history'
+                    . ' WHERE id_order = ' . (int)$order_id
+                    . ' AND id_order_state IN (' . implode(',', array_map('intval', $shipped_states)) . ')'
+                );
+                if (empty($history_data)) {
+                    $is_shipped = false;
+                }
+            }
+        }
 
         if ($this->context->customer->isLogged()) {
-            if (empty($selected_products) || !is_array($selected_products)) {
-                $this->errors[] = $this->module->l('Devi selezionare almeno un prodotto da rendere.');
-                return;
-            }
-
             $order_id       = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($ordine) . '\'');
             $order_obj      = new Order($order_id);
             $order_products = $order_obj->getProducts();
 
-            $ordered_qtys  = array();
-            $product_names = array();
-            foreach ($order_products as $op) {
-                $ordered_qtys[(int)$op['id_order_detail']]  = (int)$op['product_quantity'];
-                $product_names[(int)$op['id_order_detail']] = $op['product_name'] . ($op['product_reference'] ? ' (Rif: ' . $op['product_reference'] . ')' : '');
-            }
-
-            foreach ($selected_products as $id_order_detail) {
-                $id_order_detail = (int)$id_order_detail;
-                $qty             = (int)Tools::getValue('product_qty_' . $id_order_detail);
-
-                if (!isset($ordered_qtys[$id_order_detail])) {
-                    $this->errors[] = $this->module->l('Uno dei prodotti selezionati non appartiene all\'ordine indicato.');
+            if (!$is_shipped) {
+                // Annullamento intero ordine: popola automaticamente tutti i prodotti
+                foreach ($order_products as $op) {
+                    $products_detail[] = array(
+                        'id_order_detail' => (int)$op['id_order_detail'],
+                        'qty'             => (int)$op['product_quantity'],
+                        'name'            => $op['product_name'] . ($op['product_reference'] ? ' (Rif: ' . $op['product_reference'] . ')' : '')
+                    );
+                }
+            } else {
+                if (empty($selected_products) || !is_array($selected_products)) {
+                    $this->errors[] = $this->module->l('Devi selezionare almeno un prodotto da rendere.');
                     return;
                 }
 
-                if ($qty <= 0 || $qty > $ordered_qtys[$id_order_detail]) {
-                    $this->errors[] = sprintf($this->module->l('Quantità non valida per il prodotto %s. Massimo consentito: %d.'), $product_names[$id_order_detail], $ordered_qtys[$id_order_detail]);
-                    return;
+                $ordered_qtys  = array();
+                $product_names = array();
+                foreach ($order_products as $op) {
+                    $ordered_qtys[(int)$op['id_order_detail']]  = (int)$op['product_quantity'];
+                    $product_names[(int)$op['id_order_detail']] = $op['product_name'] . ($op['product_reference'] ? ' (Rif: ' . $op['product_reference'] . ')' : '');
                 }
 
-                $products_detail[] = array(
-                    'id_order_detail' => $id_order_detail,
-                    'qty'             => $qty,
-                    'name'            => $product_names[$id_order_detail]
-                );
+                foreach ($selected_products as $id_order_detail) {
+                    $id_order_detail = (int)$id_order_detail;
+                    $qty             = (int)Tools::getValue('product_qty_' . $id_order_detail);
+
+                    if (!isset($ordered_qtys[$id_order_detail])) {
+                        $this->errors[] = $this->module->l('Uno dei prodotti selezionati non appartiene all\'ordine indicato.');
+                        return;
+                    }
+
+                    if ($qty <= 0 || $qty > $ordered_qtys[$id_order_detail]) {
+                        $this->errors[] = sprintf($this->module->l('Quantità non valida per il prodotto %s. Massimo consentito: %d.'), $product_names[$id_order_detail], $ordered_qtys[$id_order_detail]);
+                        return;
+                    }
+
+                    $products_detail[] = array(
+                        'id_order_detail' => $id_order_detail,
+                        'qty'             => $qty,
+                        'name'            => $product_names[$id_order_detail]
+                    );
+                }
             }
         }
 

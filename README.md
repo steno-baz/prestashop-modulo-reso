@@ -16,12 +16,13 @@ Questo modulo per PrestaShop fornisce una pagina dedicata sul front-end per perm
 
 ## Configurazione Stati Ordine
 
-Il modulo consente di scegliere due stati ordine PrestaShop per la logica di eligibilità del reso:
+Il modulo consente di configurare tre tipi di stati ordine PrestaShop per gestire la logica del reso:
 
+- **Stato ordine Spedito**: usato per determinare se l'ordine è in viaggio. Se un ordine non ha ancora raggiunto questo stato, l'utente potrà solo richiedere l'annullamento dell'intero ordine (senza poter scegliere singoli prodotti). Se non configurato, la condizione non si applica.
 - **Stato ordine consegnato**: usato come data di riferimento primaria per il calcolo del termine di reso/recesso.
 - **Stato ordine pagamento accettato**: usato come data di riferimento alternativa se non è presente una data di consegna.
 
-Questi stati vanno configurati nelle impostazioni del modulo, selezionandoli dalla lista di stati ordine disponibili per la lingua corrente.
+Questi stati vanno configurati nelle impostazioni del modulo, selezionandoli dalla lista di stati ordine disponibili per la lingua corrente. È supportata la selezione multipla per ogni tipologia.
 
 Gli ordini oltre il termine configurato verranno mostrati come non selezionabili nella tendina degli ordini per i clienti loggati.
 

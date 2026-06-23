@@ -77,7 +77,7 @@ select option:disabled {
                         <select name="ordine" id="ordine" class="form-control" required>
                             <option value="">-- Seleziona il tuo ordine --</option>
                             {foreach from=$orders item=order}
-                                <option value="{$order.reference}" {if $selected_order == $order.reference}selected{/if} {if !$order.selectable}disabled{/if}>
+                                <option value="{$order.reference}" data-is-shipped="{if $order.is_shipped}1{else}0{/if}" {if $selected_order == $order.reference}selected{/if} {if !$order.selectable}disabled{/if}>
                                     {if !$order.selectable}[FUORI TEMPO] - {/if}Ordine {$order.reference} del {$order.date|date_format:"%d/%m/%Y"}
                                 </option>
                             {/foreach}
@@ -87,6 +87,10 @@ select option:disabled {
                         {else}
                             <small class="form-text text-muted">Gli ordini oltre {$resi_days} giorni dalla data di consegna o, se non consegnato, dalla data del pagamento non sono selezionabili.</small>
                         {/if}
+
+                        <div id="unshipped-message-container" style="margin-top: 15px; display: none;" class="alert alert-warning">
+                            L'ordine non è ancora stato spedito. Non puoi selezionare i singoli articoli ma richiedendo il reso annullerai l'intero ordine.
+                        </div>
 
                         <div id="products-selection-container" style="margin-top: 15px; display: none;">
                             <label><strong>Seleziona i prodotti da rendere: *</strong></label>
@@ -154,19 +158,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!$) return;
 
     function handleOrderChange() {
-        var selectedRef = $('#ordine').val();
+        var $selectedOption = $('#ordine option:selected');
+        var selectedRef = $selectedOption.val();
+        var isShipped = $selectedOption.data('is-shipped');
         
-        // Nascondi il contenitore principale
+        // Nascondi il contenitore principale e il messaggio
         $('#products-selection-container').hide();
+        $('#unshipped-message-container').hide();
         // Nascondi tutte le liste, deseleziona i prodotti e disabilita gli input quantità
         $('.order-products-list').hide().find('.product-select-chk').prop('checked', false);
         $('.order-products-list').find('.product-qty-input').prop('disabled', true);
 
         if (selectedRef) {
-            var $activeList = $('#products-order-' + selectedRef);
-            if ($activeList.length) {
-                $('#products-selection-container').show();
-                $activeList.show();
+            // Se isShipped non è definito (es. campo manuale), diamo per scontato sia spedito
+            if (isShipped == 0) {
+                $('#unshipped-message-container').show();
+            } else {
+                var $activeList = $('#products-order-' + selectedRef);
+                if ($activeList.length) {
+                    $('#products-selection-container').show();
+                    $activeList.show();
+                }
             }
         }
     }
@@ -199,6 +211,18 @@ document.addEventListener('DOMContentLoaded', function() {
             // Imposta al valore massimo consentito (quantità ordinata)
             $qtyInput.val($qtyInput.attr('max'));
         });
+    });
+
+    // Prevenire il doppio submit del form
+    $('.form-reso-custom').on('submit', function() {
+        var $btn = $(this).find('button[type="submit"]');
+        if ($btn.prop('disabled')) {
+            return false; // Blocca invii aggiuntivi se già disabilitato
+        }
+        $btn.prop('disabled', true);
+        // Opzionale: cambia il testo del pulsante per dare feedback visivo
+        $btn.text('Invio in corso...');
+        // Il form continuerà l'invio nativo poichè non c'è preventDefault()
     });
 });
 </script>
