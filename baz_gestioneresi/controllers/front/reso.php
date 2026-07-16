@@ -104,10 +104,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
             }
         }
 
-        // Gestione del POST (Invio del modulo)
-        if (Tools::isSubmit('submit_reso')) {
-            $this->processResoForm();
-        }
+
 
         // Passiamo le variabili a Smarty (il template)
         $this->context->smarty->assign(array(
@@ -128,6 +125,14 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         ));
 
         $this->setTemplate('module:baz_gestioneresi/views/templates/front/form_reso.tpl');
+    }
+
+    public function postProcess()
+    {
+        if (Tools::isSubmit('submit_reso')) {
+            $this->processResoForm();
+        }
+        parent::postProcess();
     }
 
     protected function processResoForm()
@@ -339,27 +344,35 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         // Invio al gestore del negozio (o alle email configurate)
         $emails_config = Configuration::get('BAZ_RESI_EMAILS');
         if (empty($emails_config)) {
-            $to = Configuration::get('PS_SHOP_EMAIL');
+            $to_list = array(Configuration::get('PS_SHOP_EMAIL'));
         } else {
             // Supporto a più indirizzi separati da virgola
-            $to = array_map('trim', explode(',', $emails_config));
+            $to_list = array_map('trim', explode(',', $emails_config));
         }
 
-        $mail_success = Mail::Send(
-            (int)$this->context->language->id,
-            'reso_admin',
-            $this->module->l('Nuova Richiesta di Reso Ordine #' . $ordine),
-            $template_vars,
-            $to,
-            'Servizio Clienti Resi',
-            null,
-            null,
-            $attachment,
-            null,
-            dirname(__FILE__) . '/../../mails/',
-            false,
-            (int)$this->context->shop->id
-        );
+        $mail_success = false;
+        foreach ($to_list as $to) {
+            if (Validate::isEmail($to)) {
+                $sent = Mail::Send(
+                    (int)$this->context->language->id,
+                    'reso_admin',
+                    $this->module->l('Nuova Richiesta di Reso Ordine #' . $ordine),
+                    $template_vars,
+                    $to,
+                    'Servizio Clienti Resi',
+                    null,
+                    null,
+                    $attachment,
+                    null,
+                    dirname(__FILE__) . '/../../mails/',
+                    false,
+                    (int)$this->context->shop->id
+                );
+                if ($sent) {
+                    $mail_success = true;
+                }
+            }
+        }
 
         // Invio mail di conferma al cliente (se attivato dalle impostazioni)
         if ($mail_success && Configuration::get('BAZ_RESI_SEND_CUSTOMER_MAIL')) {

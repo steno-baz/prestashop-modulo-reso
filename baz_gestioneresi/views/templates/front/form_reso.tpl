@@ -33,6 +33,7 @@ select option:disabled {
             {/if}
 
             <form action="" method="post" enctype="multipart/form-data" class="form-reso-custom">
+                <input type="hidden" name="submit_reso" value="1">
 
                 <div class="row">
                     <div class="col-md-6">
@@ -219,7 +220,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if ($btn.prop('disabled')) {
             return false; // Blocca invii aggiuntivi se già disabilitato
         }
-        $btn.prop('disabled', true);
+        // Disabilitiamo il bottone dopo un piccolissimo delay per permettere
+        // al browser di inviare il form correttamente.
+        setTimeout(function() {
+            $btn.prop('disabled', true);
+        }, 1);
         // Opzionale: cambia il testo del pulsante per dare feedback visivo
         $btn.text('Invio in corso...');
         // Il form continuerà l'invio nativo poichè non c'è preventDefault()
