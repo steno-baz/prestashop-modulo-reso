@@ -35,6 +35,12 @@ select option:disabled {
             <form action="" method="post" enctype="multipart/form-data" class="form-reso-custom">
                 <input type="hidden" name="submit_reso" value="1">
 
+                {* Campo Honeypot invisibile per prevenire lo spam dei bot *}
+                <div style="position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;" aria-hidden="true">
+                    <label for="reso_website_hp">Lascia vuoto questo campo</label>
+                    <input type="text" name="reso_website_hp" id="reso_website_hp" value="" tabindex="-1" autocomplete="off">
+                </div>
+
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-group">

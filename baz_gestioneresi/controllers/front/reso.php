@@ -137,28 +137,66 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
 
     protected function processResoForm()
     {
-        // Validazione Privacy
+        // 1. Controllo Honeypot anti-bot
+        if (!empty(Tools::getValue('reso_website_hp'))) {
+            $this->errors[] = $this->module->l('Invio non valido.');
+            return;
+        }
+
+        // 2. Validazione Privacy
         if (!Tools::getValue('privacy')) {
             $this->errors[] = $this->module->l('Devi accettare l\'informativa sulla privacy.');
             return;
         }
 
-        // Raccolta dati dal form
-        $nome      = Tools::getValue('nome');
-        $cognome   = Tools::getValue('cognome');
-        $email     = Tools::getValue('email');
-        $ordine    = Tools::getValue('ordine');
-        $cellulare = Tools::getValue('cellulare');
-        $messaggio = Tools::getValue('messaggio'); // Facoltativo
+        // 3. Raccolta e sanificazione dati dal form
+        $nome      = trim((string)Tools::getValue('nome'));
+        $cognome   = trim((string)Tools::getValue('cognome'));
+        $email     = trim((string)Tools::getValue('email'));
+        $ordine    = trim((string)Tools::getValue('ordine'));
+        $cellulare = trim((string)Tools::getValue('cellulare'));
+        $messaggio = trim((string)Tools::getValue('messaggio')); // Facoltativo
 
         if (empty($nome) || empty($cognome) || empty($email) || empty($ordine)) {
             $this->errors[] = $this->module->l('I campi Nome, Cognome, Email e Ordine sono obbligatori.');
             return;
         }
 
-        if ($this->context->customer->isLogged() && !$this->isOrderEligible($ordine, $this->context->customer->id)) {
-            $this->errors[] = $this->module->l('L\'ordine selezionato non è più eligibile per il reso/recesso oppure non appartiene al tuo account.');
+        if (!Validate::isEmail($email)) {
+            $this->errors[] = $this->module->l('L\'indirizzo email inserito non è valido.');
             return;
+        }
+
+        // 4. Validazione Ordine ed Email
+        $order_obj = $this->findOrderByReferenceOrId($ordine);
+
+        if ($this->context->customer->isLogged()) {
+            if (!$order_obj || (int)$order_obj->id_customer !== (int)$this->context->customer->id || !$this->isOrderEligible($order_obj, $this->context->customer->id)) {
+                $this->errors[] = $this->module->l('L\'ordine selezionato non è più eligibile per il reso/recesso oppure non appartiene al tuo account.');
+                return;
+            }
+        } else {
+            // Utente non loggato: verifica che l'ordine esista
+            if (!$order_obj) {
+                $this->errors[] = $this->module->l('Nessun ordine trovato corrispondente al codice indicato.');
+                return;
+            }
+
+            // Verifica che l'email inserita corrisponda a quella dell'ordine
+            $order_customer = new Customer((int)$order_obj->id_customer);
+            if (!Validate::isLoadedObject($order_customer) || strtolower(trim($order_customer->email)) !== strtolower(trim($email))) {
+                $this->errors[] = $this->module->l('L\'indirizzo email inserito non corrisponde a quello associato all\'ordine.');
+                return;
+            }
+
+            // Verifica che l'ordine sia idoneo (non annullato e nei limiti di tempo)
+            if (!$this->isOrderEligible($order_obj)) {
+                $this->errors[] = $this->module->l('L\'ordine indicato non è più idoneo per la richiesta di reso (termine scaduto o ordine annullato).');
+                return;
+            }
+
+            // Normalizziamo il riferimento ordine ufficiale
+            $ordine = $order_obj->reference;
         }
 
         // Se l'utente è loggato, recuperiamo e validiamo i prodotti selezionati da rendere
@@ -167,7 +205,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         
         $is_shipped = true;
         if ($this->context->customer->isLogged()) {
-            $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($ordine) . '\'');
+            $order_id = (int)$order_obj->id;
             $shipped_states = $this->parseStateIds(Configuration::get('BAZ_RESI_ORDER_STATE_SHIPPED'));
             if (!empty($shipped_states) && $order_id) {
                 $history_data = Db::getInstance()->executeS(
@@ -182,8 +220,6 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         }
 
         if ($this->context->customer->isLogged()) {
-            $order_id       = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($ordine) . '\'');
-            $order_obj      = new Order($order_id);
             $order_products = $order_obj->getProducts();
 
             if (!$is_shipped) {
@@ -254,7 +290,7 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
         // Scrittura nel database (solo se utente loggato)
         $id_order_return = 0;
         if ($this->context->customer->isLogged()) {
-            $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($ordine) . '\'');
+            $order_id = (int)$order_obj->id;
             $db       = Db::getInstance();
             $db->insert('order_return', array(
                 'id_customer' => (int)$this->context->customer->id,
@@ -449,21 +485,64 @@ class Baz_gestioneresiResoModuleFrontController extends ModuleFrontController
     }
 
     /**
-     * Verifica se un ordine (per reference) è ancora eleggibile al reso.
+     * Trova un oggetto Order a partire dal riferimento (anche con eventuale #) o dall'ID ordine.
      *
-     * @param string $reference   Riferimento ordine
-     * @param int    $customer_id ID cliente
+     * @param string|int $ordine
+     * @return Order|null
+     */
+    protected function findOrderByReferenceOrId($ordine)
+    {
+        $clean_ordine = trim((string)$ordine);
+        if (empty($clean_ordine)) {
+            return null;
+        }
+
+        $stripped_ordine = ltrim($clean_ordine, '#');
+
+        $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders 
+                WHERE reference = \'' . pSQL($clean_ordine) . '\'
+                   OR reference = \'' . pSQL($stripped_ordine) . '\'';
+
+        if (is_numeric($stripped_ordine) && (int)$stripped_ordine > 0) {
+            $sql .= ' OR id_order = ' . (int)$stripped_ordine;
+        }
+
+        $id_order = (int)Db::getInstance()->getValue($sql);
+        if ($id_order > 0) {
+            $order = new Order($id_order);
+            if (Validate::isLoadedObject($order)) {
+                return $order;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifica se un ordine (per reference o oggetto Order) è ancora eleggibile al reso.
+     *
+     * @param string|Order $order_param Riferimento ordine o istanza di Order
+     * @param int|null     $customer_id ID cliente opzionale per verifica proprietà
      * @return bool
      */
-    protected function isOrderEligible($reference, $customer_id)
+    protected function isOrderEligible($order_param, $customer_id = null)
     {
-        $order_id = (int)Db::getInstance()->getValue('SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = \'' . pSQL($reference) . '\'');
-        if (!$order_id) {
+        if ($order_param instanceof Order) {
+            $order = $order_param;
+        } else {
+            $order = $this->findOrderByReferenceOrId($order_param);
+        }
+
+        if (!$order || !Validate::isLoadedObject($order)) {
             return false;
         }
 
-        $order = new Order($order_id);
-        if (!$order->id || (int)$order->id_customer !== (int)$customer_id) {
+        if ($customer_id !== null && (int)$order->id_customer !== (int)$customer_id) {
+            return false;
+        }
+
+        // Escludi gli ordini annullati
+        if (isset($order->current_state) && (int)$order->current_state === (int)Configuration::get('PS_OS_CANCELED')) {
             return false;
         }
 
